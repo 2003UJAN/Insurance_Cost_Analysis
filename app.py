@@ -15,8 +15,10 @@ import google.generativeai as genai
 import warnings
 from datetime import datetime
 import time
-from pathlib import Path
 warnings.filterwarnings('ignore')
+
+# Suppress TensorFlow warnings
+tf.get_logger().setLevel('ERROR')
 
 # ============================================================================
 # PAGE CONFIGURATION
@@ -201,15 +203,27 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# LOAD MODELS
+# LOAD MODELS - FIXED VERSION
 # ============================================================================
 
 @st.cache_resource(show_spinner=False)
 def load_models():
-    """Load all trained models from models/ directory"""
+    """Load all trained models from models/ directory - FIXED"""
     try:
-        # Updated paths to match your structure
-        dl_model = tf.keras.models.load_model('models/insurance_dl_model.h5')
+        # Load Deep Learning model WITHOUT compilation to avoid metric errors
+        dl_model = tf.keras.models.load_model(
+            'models/insurance_dl_model.h5',
+            compile=False  # KEY FIX: Prevents keras.metrics deserialization error
+        )
+        
+        # Recompile with basic metrics
+        dl_model.compile(
+            optimizer='adam',
+            loss='mse',
+            metrics=['mae']
+        )
+        
+        # Load other models (work fine as-is)
         rf_model = joblib.load('models/insurance_rf_model.pkl')
         xgb_model = joblib.load('models/insurance_xgb_model.pkl')
         scaler = joblib.load('models/insurance_scaler.pkl')
@@ -219,8 +233,10 @@ def load_models():
             feature_columns = [line.strip() for line in f.readlines()]
         
         return dl_model, rf_model, xgb_model, scaler, feature_columns, True
+        
     except Exception as e:
-        st.error(f"Error loading models: {e}")
+        st.error(f"❌ Error loading models: {str(e)}")
+        st.info("📚 Ensure all model files are in the 'models/' directory")
         return None, None, None, None, None, False
 
 with st.spinner('🔄 Loading AI models...'):
@@ -370,7 +386,7 @@ Keep professional yet accessible. Use specific dollar amounts.
         response = model_gemini.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"⚠️ AI insights temporarily unavailable. Error: {str(e)}"
+        return f"⚠️ AI insights temporarily unavailable."
 
 # ============================================================================
 # HEADER
@@ -432,7 +448,7 @@ with st.sidebar.form("prediction_form"):
 
 if not models_loaded:
     st.error("🚨 Models not found! Please ensure model files are in the 'models/' directory")
-    st.info("📚 Run the Colab notebook first to generate model files")
+    st.info("📚 Your models directory should contain:\n- insurance_dl_model.h5\n- insurance_rf_model.pkl\n- insurance_xgb_model.pkl\n- insurance_scaler.pkl\n- feature_columns.txt")
     st.stop()
 
 if not submit_button:
@@ -683,7 +699,6 @@ if submit_button:
     
     st.markdown("### 📥 Save Your Prediction")
     
-    # Save to exports/ directory matching your structure
     prediction_data = pd.DataFrame([{
         'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'Age': age,
