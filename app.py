@@ -9,14 +9,13 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import tensorflow as tf
 import joblib
-from sklearn.preprocessing import StandardScaler
 import google.generativeai as genai
 import warnings
 from datetime import datetime
 import time
+from pathlib import Path
 warnings.filterwarnings('ignore')
 
 # ============================================================================
@@ -31,17 +30,14 @@ st.set_page_config(
 )
 
 # ============================================================================
-# CUSTOM CSS - MODERN & COOL UI
+# CUSTOM CSS
 # ============================================================================
 
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
     
-    * {
-        font-family: 'Poppins', sans-serif;
-    }
-    
+    * { font-family: 'Poppins', sans-serif; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
@@ -67,7 +63,6 @@ st.markdown("""
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin: 0;
-        padding: 0;
     }
     
     .main-header p {
@@ -82,7 +77,7 @@ st.markdown("""
         padding: 1.5rem;
         box-shadow: 0 5px 20px rgba(0,0,0,0.1);
         margin-bottom: 1.5rem;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        transition: transform 0.3s ease;
     }
     
     .info-card:hover {
@@ -160,20 +155,9 @@ st.markdown("""
         margin: 0.3rem;
     }
     
-    .risk-high {
-        background: #ff6b6b;
-        color: white;
-    }
-    
-    .risk-medium {
-        background: #ffd93d;
-        color: #333;
-    }
-    
-    .risk-low {
-        background: #6bcf7f;
-        color: white;
-    }
+    .risk-high { background: #ff6b6b; color: white; }
+    .risk-medium { background: #ffd93d; color: #333; }
+    .risk-low { background: #6bcf7f; color: white; }
     
     .profile-card {
         background: white;
@@ -189,15 +173,8 @@ st.markdown("""
         border-bottom: 1px solid #eee;
     }
     
-    .profile-label {
-        font-weight: 600;
-        color: #667eea;
-    }
-    
-    .profile-value {
-        font-weight: 500;
-        color: #333;
-    }
+    .profile-label { font-weight: 600; color: #667eea; }
+    .profile-value { font-weight: 500; color: #333; }
     
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(-20px); }
@@ -229,18 +206,21 @@ st.markdown("""
 
 @st.cache_resource(show_spinner=False)
 def load_models():
-    """Load all trained models"""
+    """Load all trained models from models/ directory"""
     try:
+        # Updated paths to match your structure
         dl_model = tf.keras.models.load_model('models/insurance_dl_model.h5')
         rf_model = joblib.load('models/insurance_rf_model.pkl')
         xgb_model = joblib.load('models/insurance_xgb_model.pkl')
         scaler = joblib.load('models/insurance_scaler.pkl')
         
+        # Load feature columns
         with open('models/feature_columns.txt', 'r') as f:
             feature_columns = [line.strip() for line in f.readlines()]
         
         return dl_model, rf_model, xgb_model, scaler, feature_columns, True
     except Exception as e:
+        st.error(f"Error loading models: {e}")
         return None, None, None, None, None, False
 
 with st.spinner('🔄 Loading AI models...'):
@@ -366,22 +346,22 @@ You are an expert insurance actuary. Provide a professional analysis for this ap
 
 **PREDICTED PREMIUM:** ${predicted_cost:,.2f}
 
-Provide in this format:
+Provide:
 
 ### 🎯 Executive Summary
 (2-3 sentences)
 
 ### 📊 Risk Factor Analysis
-(Analyze each major factor with cost impacts)
+(Analyze each major factor)
 
 ### 💰 Premium Breakdown
 (Explain cost components)
 
 ### 💡 Personalized Recommendations
-(4-5 specific, actionable recommendations)
+(4-5 specific recommendations)
 
 ### 🔮 Future Outlook
-(Impact of lifestyle changes over 5 years)
+(5-year projection)
 
 Keep professional yet accessible. Use specific dollar amounts.
 """
@@ -451,8 +431,8 @@ with st.sidebar.form("prediction_form"):
 # ============================================================================
 
 if not models_loaded:
-    st.error("🚨 Models not found! Please train models using the Colab notebook first.")
-    st.info("📚 Upload the trained model files to the 'models/' directory")
+    st.error("🚨 Models not found! Please ensure model files are in the 'models/' directory")
+    st.info("📚 Run the Colab notebook first to generate model files")
     st.stop()
 
 if not submit_button:
@@ -462,7 +442,7 @@ if not submit_button:
         st.markdown("""
         <div class="info-card">
             <h3>🤖 AI-Powered</h3>
-            <p>Advanced deep learning models analyze your profile for accurate predictions</p>
+            <p>Advanced deep learning models for accurate predictions</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -703,6 +683,7 @@ if submit_button:
     
     st.markdown("### 📥 Save Your Prediction")
     
+    # Save to exports/ directory matching your structure
     prediction_data = pd.DataFrame([{
         'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'Age': age,
