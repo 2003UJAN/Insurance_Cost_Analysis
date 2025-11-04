@@ -17,6 +17,7 @@ from datetime import datetime
 import time
 import dill
 import os
+api_key = st.secrets["GEMINI_API_KEY"]
 warnings.filterwarnings('ignore')
 tf.get_logger().setLevel('ERROR')
 
