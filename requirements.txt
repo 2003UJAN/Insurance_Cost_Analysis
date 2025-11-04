@@ -1,1 +1,9 @@
-
+streamlit
+tensorflow
+scikit-learn
+xgboost
+pandas
+numpy
+plotly
+google-generativeai
+joblib
