@@ -1,8 +1,10 @@
 streamlit
-google-genai
 tensorflow
-pandas
-numpy
 scikit-learn
 xgboost
 lightgbm
+pandas
+numpy
+plotly
+google-generativeai
+joblib
