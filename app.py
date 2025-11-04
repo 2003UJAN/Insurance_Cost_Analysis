@@ -15,9 +15,8 @@ import google.generativeai as genai
 import warnings
 from datetime import datetime
 import time
+import os
 warnings.filterwarnings('ignore')
-
-# Suppress TensorFlow warnings
 tf.get_logger().setLevel('ERROR')
 
 # ============================================================================
@@ -203,30 +202,51 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# LOAD MODELS - FIXED VERSION
+# LOAD MODELS - FIXED WITH BETTER ERROR HANDLING
 # ============================================================================
 
 @st.cache_resource(show_spinner=False)
 def load_models():
-    """Load all trained models from models/ directory - FIXED"""
+    """Load all trained models with comprehensive error handling"""
+    
     try:
-        # Load Deep Learning model WITHOUT compilation to avoid metric errors
-        dl_model = tf.keras.models.load_model(
-            'models/insurance_dl_model.h5',
-            compile=False  # KEY FIX: Prevents keras.metrics deserialization error
-        )
+        # Check if models directory exists
+        if not os.path.exists('models'):
+            st.error("❌ 'models/' directory not found")
+            st.info(f"📁 Current directory: {os.getcwd()}")
+            st.info("💡 Ensure model files are in the 'models/' directory")
+            return None, None, None, None, None, False
         
-        # Recompile with basic metrics
-        dl_model.compile(
-            optimizer='adam',
-            loss='mse',
-            metrics=['mae']
-        )
+        # List files in models directory
+        model_files = os.listdir('models')
+        required_files = [
+            'insurance_dl_model.h5',
+            'insurance_rf_model.pkl',
+            'insurance_xgb_model.pkl',
+            'insurance_scaler.pkl',
+            'feature_columns.txt'
+        ]
         
-        # Load other models (work fine as-is)
-        rf_model = joblib.load('models/insurance_rf_model.pkl')
-        xgb_model = joblib.load('models/insurance_xgb_model.pkl')
-        scaler = joblib.load('models/insurance_scaler.pkl')
+        # Check if all required files exist
+        missing_files = [f for f in required_files if f not in model_files]
+        if missing_files:
+            st.error(f"❌ Missing files: {', '.join(missing_files)}")
+            st.info(f"📁 Found files: {', '.join(model_files)}")
+            return None, None, None, None, None, False
+        
+        # Load Deep Learning model (with compile=False to avoid keras.metrics error)
+        with st.spinner('Loading Deep Learning model...'):
+            dl_model = tf.keras.models.load_model(
+                'models/insurance_dl_model.h5',
+                compile=False
+            )
+            dl_model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+        
+        # Load traditional ML models
+        with st.spinner('Loading ML models...'):
+            rf_model = joblib.load('models/insurance_rf_model.pkl')
+            xgb_model = joblib.load('models/insurance_xgb_model.pkl')
+            scaler = joblib.load('models/insurance_scaler.pkl')
         
         # Load feature columns
         with open('models/feature_columns.txt', 'r') as f:
@@ -236,9 +256,13 @@ def load_models():
         
     except Exception as e:
         st.error(f"❌ Error loading models: {str(e)}")
-        st.info("📚 Ensure all model files are in the 'models/' directory")
+        st.info("💡 Make sure you've run the Colab notebook to generate model files")
+        import traceback
+        with st.expander("🔍 Show detailed error"):
+            st.code(traceback.format_exc())
         return None, None, None, None, None, False
 
+# Load models
 with st.spinner('🔄 Loading AI models...'):
     dl_model, rf_model, xgb_model, scaler, feature_columns, models_loaded = load_models()
 
@@ -247,7 +271,7 @@ try:
     GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", None)
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
-        model_gemini = genai.GenerativeModel('gemini-2.0-flash-lite')
+        model_gemini = genai.GenerativeModel('gemini-pro')
         AI_ENABLED = True
     else:
         AI_ENABLED = False
@@ -447,8 +471,14 @@ with st.sidebar.form("prediction_form"):
 # ============================================================================
 
 if not models_loaded:
-    st.error("🚨 Models not found! Please ensure model files are in the 'models/' directory")
-    st.info("📚 Your models directory should contain:\n- insurance_dl_model.h5\n- insurance_rf_model.pkl\n- insurance_xgb_model.pkl\n- insurance_scaler.pkl\n- feature_columns.txt")
+    st.error("🚨 Models not loaded! Please check the error messages above.")
+    st.info("""
+    **📚 Troubleshooting Steps:**
+    1. Ensure all model files are in the 'models/' directory
+    2. Required files: insurance_dl_model.h5, insurance_rf_model.pkl, insurance_xgb_model.pkl, insurance_scaler.pkl, feature_columns.txt
+    3. Run the Colab notebook to generate model files if needed
+    4. Check file permissions and sizes
+    """)
     st.stop()
 
 if not submit_button:
