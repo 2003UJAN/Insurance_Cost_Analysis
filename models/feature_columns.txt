@@ -1,0 +1,16 @@
+age
+bmi
+children
+sex_encoded
+region_encoded
+smoker_encoded
+is_obese
+is_smoker
+has_children
+is_elderly
+smoking_bmi
+age_bmi
+smoking_age
+age_squared
+bmi_squared
+risk_score
