@@ -15,6 +15,7 @@ import google.generativeai as genai
 import warnings
 from datetime import datetime
 import time
+import dill
 import os
 warnings.filterwarnings('ignore')
 tf.get_logger().setLevel('ERROR')
