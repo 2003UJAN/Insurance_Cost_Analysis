@@ -1,1 +1,13 @@
+# Streamlit secrets (contains API keys)
+.streamlit/secrets.toml
 
+# Environment files with API keys
+.env
+.env.local
+*.env
+
+# Any file containing API keys or secrets
+*secrets*
+*apikey*
+*api_key*
+*credentials*
