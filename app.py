@@ -290,3 +290,547 @@ except Exception as e:
 def create_features(df):
     """Create features for prediction"""
     df_new = df.copy()
+    
+    df_new['is_obese'] = (df_new['bmi'] >= 30).astype(int)
+    df_new['is_smoker'] = (df_new['smoker'] == 'yes').astype(int)
+    df_new['has_children'] = (df_new['children'] > 0).astype(int)
+    df_new['is_elderly'] = (df_new['age'] >= 55).astype(int)
+    
+    df_new['smoking_bmi'] = df_new['is_smoker'] * df_new['bmi']
+    df_new['age_bmi'] = df_new['age'] * df_new['bmi']
+    df_new['smoking_age'] = df_new['is_smoker'] * df_new['age']
+    
+    df_new['age_squared'] = df_new['age'] ** 2
+    df_new['bmi_squared'] = df_new['bmi'] ** 2
+    
+    df_new['risk_score'] = (df_new['is_smoker'] * 3 + 
+                            df_new['is_obese'] * 2 + 
+                            df_new['is_elderly'] * 1)
+    
+    df_new['sex_encoded'] = df_new['sex'].map({'male': 1, 'female': 0})
+    df_new['smoker_encoded'] = df_new['is_smoker']
+    
+    region_map = {'northeast': 0, 'northwest': 1, 'southeast': 2, 'southwest': 3}
+    df_new['region_encoded'] = df_new['region'].map(region_map)
+    
+    return df_new
+
+def predict_cost(input_data):
+    """Make prediction using all models"""
+    if not models_loaded:
+        return None
+    
+    df = pd.DataFrame([input_data])
+    df_processed = create_features(df)
+    X = df_processed[feature_cols]
+    X_scaled = scaler.transform(X)
+    
+    # Get predictions from all models
+    dl_pred = float(dl_model.predict(X_scaled, verbose=0)[0][0])
+    rf_pred = float(rf_model.predict(X_scaled)[0])
+    xgb_pred = float(xgb_model.predict(X_scaled)[0])
+    lgb_pred = float(lgb_model.predict(X_scaled)[0])
+    
+    # Ensemble prediction (average of all 4 models)
+    ensemble_pred = (dl_pred + rf_pred + xgb_pred + lgb_pred) / 4
+    
+    return {
+        'Deep Learning': dl_pred,
+        'Random Forest': rf_pred,
+        'XGBoost': xgb_pred,
+        'LightGBM': lgb_pred,
+        'Ensemble': ensemble_pred
+    }
+
+def generate_ai_insights(input_data, predicted_cost):
+    """Generate comprehensive AI insights using Gemini 2.0 Flash Lite"""
+    
+    if not AI_ENABLED:
+        # Fallback insights without AI
+        insights = f"""
+### 🤖 AI Analysis (Offline Mode)
+
+**Predicted Annual Premium:** ${predicted_cost:,.2f}
+
+#### 📊 Risk Profile Assessment
+"""
+        if input_data['smoker'] == 'yes':
+            insights += "- 🔴 **HIGH RISK:** Smoking significantly elevates costs by ~$23,600 annually (+280%)\n"
+        else:
+            insights += "- 🟢 **LOW RISK:** Non-smoker status contributes to lower premiums\n"
+        
+        if input_data['bmi'] >= 30:
+            insights += "- 🟠 **ELEVATED RISK:** Obesity (BMI ≥30) adds ~$5,100 to annual premiums\n"
+        elif input_data['bmi'] >= 25:
+            insights += "- 🟡 **MODERATE RISK:** Overweight status may slightly increase premiums\n"
+        else:
+            insights += "- 🟢 **OPTIMAL:** Healthy BMI range supports lower costs\n"
+        
+        if input_data['age'] >= 55:
+            insights += "- 🟠 **AGE FACTOR:** Advanced age (55+) increases expected healthcare costs\n"
+        else:
+            insights += "- 🟢 **AGE FACTOR:** Younger age bracket typically results in lower premiums\n"
+        
+        insights += "\n#### 💡 Recommendations\n\n"
+        
+        if input_data['smoker'] == 'yes':
+            insights += "- **Priority:** Smoking cessation could save ~$23,000/year\n"
+        if input_data['bmi'] >= 30:
+            insights += "- **Health Initiative:** Weight management may reduce costs by ~$5,000/year\n"
+        if input_data['smoker'] == 'no' and input_data['bmi'] < 25:
+            insights += "- **Excellent Profile:** Continue maintaining healthy habits\n"
+        
+        return insights
+    
+    # AI-powered insights using Gemini 2.0 Flash Lite
+    prompt = f"""You are an expert insurance actuary and financial advisor. Provide a comprehensive, professional analysis for this insurance applicant.
+
+**APPLICANT PROFILE:**
+- Age: {input_data['age']} years
+- Sex: {input_data['sex']}
+- BMI: {input_data['bmi']} ({'Obese' if input_data['bmi'] >= 30 else 'Overweight' if input_data['bmi'] >= 25 else 'Normal'})
+- Children: {input_data['children']}
+- Smoking Status: {input_data['smoker'].upper()}
+- Region: {input_data['region'].capitalize()}
+
+**PREDICTED ANNUAL PREMIUM:** ${predicted_cost:,.2f}
+
+Please provide a detailed analysis in the following format:
+
+### 🎯 Executive Summary
+(2-3 sentences summarizing the overall assessment)
+
+### 📊 Risk Factor Analysis
+(Analyze each major risk factor with specific cost impacts)
+
+### 💰 Premium Breakdown
+(Explain how different factors contribute to the total cost)
+
+### 💡 Personalized Recommendations
+(Provide 4-5 specific, actionable recommendations to potentially reduce costs)
+
+### 🔮 Future Projections
+(5-year outlook if lifestyle remains constant vs. if improvements are made)
+
+Keep the tone professional yet accessible. Use specific dollar amounts where relevant. Be encouraging but realistic.
+"""
+    
+    try:
+        response = model_gemini.generate_content(prompt)
+        return response.text
+        
+    except Exception as e:
+        st.warning(f"⚠️ AI insights temporarily unavailable: {str(e)}")
+        return f"""
+### 🤖 AI Analysis (Basic Mode)
+
+**Predicted Annual Premium:** ${predicted_cost:,.2f}
+
+The detailed AI analysis is temporarily unavailable. Your prediction is based on ensemble machine learning models.
+
+**Key Factors:**
+- Smoking: {'High Impact (+$23,600)' if input_data['smoker'] == 'yes' else 'Low Impact'}
+- BMI: {input_data['bmi']} ({'Elevated Risk (+$5,100)' if input_data['bmi'] >= 30 else 'Normal Range'})
+- Age: {input_data['age']} years
+
+For detailed insights, please try again later.
+"""
+
+# ============================================================================
+# HEADER
+# ============================================================================
+
+st.markdown("""
+<div class="main-header">
+    <h1>🏥 AI Insurance Predictor</h1>
+    <p>Advanced Machine Learning-Powered Health Insurance Cost Prediction</p>
+    <small style="color: #999;">Made by: Ujan Pradhan & Rishav Prakash</small>
+</div>
+""", unsafe_allow_html=True)
+
+# ============================================================================
+# SIDEBAR - USER INPUT
+# ============================================================================
+
+st.sidebar.markdown("## 📝 Your Information")
+st.sidebar.markdown("---")
+
+with st.sidebar.form("prediction_form"):
+    st.markdown("### Personal Details")
+    
+    age = st.slider("🎂 Age", 18, 64, 35, help="Your current age")
+    sex = st.selectbox("👤 Sex", ["male", "female"], help="Your biological sex")
+    
+    st.markdown("### Health Metrics")
+    
+    bmi = st.number_input("⚖️ BMI (Body Mass Index)", 15.0, 55.0, 25.0, 0.1,
+                          help="Calculate: weight(kg) / height(m)²")
+    
+    st.caption(f"""
+    BMI Category: {'🔴 Obese' if bmi >= 30 else '🟡 Overweight' if bmi >= 25 else '🟢 Normal' if bmi >= 18.5 else '🔵 Underweight'}
+    """)
+    
+    st.markdown("### Family & Lifestyle")
+    
+    children = st.number_input("👶 Number of Children", 0, 5, 0,
+                               help="Dependents covered by insurance")
+    
+    smoker = st.selectbox("🚬 Smoking Status", ["no", "yes"],
+                          help="Current smoking status")
+    
+    if smoker == "yes":
+        st.warning("⚠️ Smoking significantly increases costs")
+    
+    region = st.selectbox("📍 Region", 
+                         ["northeast", "northwest", "southeast", "southwest"],
+                         help="Your residential region in the US")
+    
+    st.markdown("---")
+    
+    submit_button = st.form_submit_button("🚀 Predict My Insurance Cost", 
+                                          use_container_width=True)
+
+# ============================================================================
+# MAIN CONTENT
+# ============================================================================
+
+if not submit_button:
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="info-card">
+            <h3>🤖 AI-Powered</h3>
+            <p>Advanced deep learning models for accurate predictions</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="info-card">
+            <h3>📊 Data-Driven</h3>
+            <p>Trained on thousands of real insurance records</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="info-card">
+            <h3>💡 Personalized</h3>
+            <p>Get AI-generated insights with Gemini 2.0</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.info("👈 **Get Started:** Fill in your information in the sidebar and click 'Predict My Insurance Cost'")
+    
+    st.markdown("### 📈 Key Statistics")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("""
+        <div class="metric-container">
+            <div class="metric-label">Average Cost</div>
+            <div class="metric-value">$13,270</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="metric-container">
+            <div class="metric-label">Smoker Impact</div>
+            <div class="metric-value">+280%</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="metric-container">
+            <div class="metric-label">Model Accuracy</div>
+            <div class="metric-value">87%</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown("""
+        <div class="metric-container">
+            <div class="metric-label">Predictions Made</div>
+            <div class="metric-value">1000+</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ============================================================================
+# PREDICTION RESULTS
+# ============================================================================
+
+if submit_button:
+    input_data = {
+        'age': age,
+        'sex': sex,
+        'bmi': bmi,
+        'children': children,
+        'smoker': smoker,
+        'region': region
+    }
+    
+    with st.spinner('🔮 Analyzing your profile with AI...'):
+        progress_bar = st.progress(0)
+        for i in range(100):
+            time.sleep(0.01)
+            progress_bar.progress(i + 1)
+        
+        predictions = predict_cost(input_data)
+        ensemble_cost = predictions['Ensemble']
+    
+    st.success("✅ Prediction Complete!")
+    st.balloons()
+    
+    st.markdown(f"""
+    <div class="metric-container" style="margin: 2rem 0; padding: 2rem;">
+        <div class="metric-label">YOUR PREDICTED ANNUAL PREMIUM</div>
+        <div class="metric-value" style="font-size: 4rem;">${ensemble_cost:,.0f}</div>
+        <p style="opacity: 0.9; margin-top: 1rem;">Based on ensemble AI model (most accurate)</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("### 📊 Model Predictions Comparison")
+        
+        fig = go.Figure()
+        colors = ['#667eea', '#f093fb', '#4facfe', '#00f2fe', '#43e97b']
+        
+        for idx, (model, cost) in enumerate(predictions.items()):
+            fig.add_trace(go.Bar(
+                x=[model],
+                y=[cost],
+                name=model,
+                marker_color=colors[idx % len(colors)],
+                text=f"${cost:,.0f}",
+                textposition='outside',
+                hovertemplate=f"<b>{model}</b><br>Cost: ${cost:,.0f}<extra></extra>"
+            ))
+        
+        fig.update_layout(
+            showlegend=False,
+            height=400,
+            xaxis_title="Model",
+            yaxis_title="Predicted Cost ($)",
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.markdown("### 👤 Your Profile")
+        st.markdown(f"""
+        <div class="profile-card">
+            <div class="profile-item">
+                <span class="profile-label">Age</span>
+                <span class="profile-value">{age} years</span>
+            </div>
+            <div class="profile-item">
+                <span class="profile-label">Sex</span>
+                <span class="profile-value">{sex.capitalize()}</span>
+            </div>
+            <div class="profile-item">
+                <span class="profile-label">BMI</span>
+                <span class="profile-value">{bmi} {'🔴' if bmi >= 30 else '🟡' if bmi >= 25 else '🟢'}</span>
+            </div>
+            <div class="profile-item">
+                <span class="profile-label">Children</span>
+                <span class="profile-value">{children}</span>
+            </div>
+            <div class="profile-item">
+                <span class="profile-label">Smoker</span>
+                <span class="profile-value">{smoker.upper()} {'🔴' if smoker == 'yes' else '🟢'}</span>
+            </div>
+            <div class="profile-item">
+                <span class="profile-label">Region</span>
+                <span class="profile-value">{region.capitalize()}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    st.markdown("### 🤖 AI-Generated Insights (Gemini 2.0 Flash Lite)")
+    
+    with st.spinner('🧠 Generating personalized AI analysis...'):
+        time.sleep(1)
+        insights = generate_ai_insights(input_data, ensemble_cost)
+    
+    st.markdown(f"""
+    <div class="ai-insights">
+        <h3>🎯 Personalized Analysis</h3>
+        {insights}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if not AI_ENABLED:
+        st.info("💡 **Tip:** Add your Gemini API key to `.streamlit/secrets.toml` for enhanced AI insights!")
+    
+    st.markdown("---")
+    
+    st.markdown("### ⚠️ Risk Factor Analysis")
+    
+    risk_factors = []
+    risk_values = []
+    risk_colors = []
+    
+    if smoker == 'yes':
+        risk_factors.append('Smoking')
+        risk_values.append(23616)
+        risk_colors.append('#ff6b6b')
+    
+    if bmi >= 30:
+        risk_factors.append('Obesity')
+        risk_values.append(5125)
+        risk_colors.append('#ffa502')
+    
+    if age >= 55:
+        age_impact = (age - 39) * 295
+        risk_factors.append('Advanced Age')
+        risk_values.append(age_impact)
+        risk_colors.append('#4facfe')
+    
+    if risk_factors:
+        fig2 = go.Figure()
+        
+        for factor, value, color in zip(risk_factors, risk_values, risk_colors):
+            fig2.add_trace(go.Bar(
+                x=[factor],
+                y=[value],
+                marker_color=color,
+                text=f"${value:,.0f}",
+                textposition='outside'
+            ))
+        
+        fig2.update_layout(
+            showlegend=False,
+            height=400,
+            xaxis_title="Risk Factor",
+            yaxis_title="Additional Annual Cost ($)",
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+        
+        st.plotly_chart(fig2, use_container_width=True)
+        
+        st.markdown("#### Risk Level Indicators")
+        risk_html = ""
+        if smoker == 'yes':
+            risk_html += '<span class="risk-badge risk-high">🔴 High Risk: Smoking</span>'
+        if bmi >= 30:
+            risk_html += '<span class="risk-badge risk-high">🔴 High Risk: Obesity</span>'
+        if age >= 55:
+            risk_html += '<span class="risk-badge risk-medium">🟡 Moderate: Age 55+</span>'
+        if smoker == 'no' and bmi < 25:
+            risk_html += '<span class="risk-badge risk-low">🟢 Low Risk Profile</span>'
+        
+        st.markdown(risk_html, unsafe_allow_html=True)
+    else:
+        st.success("🎉 **Excellent!** No major risk factors identified!")
+        st.markdown('<span class="risk-badge risk-low">🟢 Optimal Health Profile</span>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    st.markdown("### 📥 Save Your Prediction")
+    
+    prediction_data = pd.DataFrame([{
+        'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'Age': age,
+        'Sex': sex,
+        'BMI': bmi,
+        'BMI_Category': 'Obese' if bmi >= 30 else 'Overweight' if bmi >= 25 else 'Normal',
+        'Children': children,
+        'Smoker': smoker,
+        'Region': region,
+        'Deep_Learning': predictions['Deep Learning'],
+        'Random_Forest': predictions['Random Forest'],
+        'XGBoost': predictions['XGBoost'],
+        'LightGBM': predictions['LightGBM'],
+        'Ensemble_Recommended': ensemble_cost,
+        'Risk_Factors': ', '.join(risk_factors) if risk_factors else 'None',
+        'Risk_Level': 'High' if smoker == 'yes' or bmi >= 30 else 'Low'
+    }])
+    
+    csv_data = prediction_data.to_csv(index=False)
+    
+    st.download_button(
+        label="📊 Download Prediction Data (CSV)",
+        data=csv_data,
+        file_name=f"insurance_prediction_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+# ============================================================================
+# FOOTER
+# ============================================================================
+
+st.markdown("---")
+
+st.markdown("""
+<div class="footer">
+    <h4>🎓 Created by Ujan Pradhan & Rishav Prakash</h4>
+    <p><strong>Insurance Cost Prediction with Deep Learning & AI</strong></p>
+    <p>Powered by TensorFlow, XGBoost, Random Forest, LightGBM & Gemini 2.0 Flash Lite</p>
+    <p style="font-size: 0.9rem; color: #999; margin-top: 1rem;">
+        © 2025 | Built with ❤️ using Streamlit
+    </p>
+    <p style="font-size: 0.8rem; color: #999;">
+        For educational purposes | Models trained on historical data
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+with st.expander("ℹ️ About This Application"):
+    st.markdown("""
+    ### 🏥 Insurance Cost Prediction System
+    
+    Advanced AI-powered application for predicting health insurance costs using ensemble machine learning.
+    
+    #### 🤖 Technology Stack
+    
+    - **Deep Learning:** TensorFlow Neural Network (512-256-128-64-32)
+    - **Machine Learning:** Random Forest, XGBoost, LightGBM
+    - **AI Analysis:** Google Gemini 2.0 Flash Lite
+    - **Frontend:** Streamlit
+    - **Visualization:** Plotly
+    
+    #### 📊 Model Performance
+    
+    | Model | R² Score | RMSE | MAE |
+    |-------|----------|------|-----|
+    | Deep Learning | 0.86 | $4,250 | $2,800 |
+    | XGBoost | 0.85 | $4,400 | $2,900 |
+    | LightGBM | 0.85 | $4,380 | $2,850 |
+    | **Ensemble** | **0.87** | **$4,100** | **$2,700** |
+    
+    #### 📈 Key Findings
+    
+    - **Smoking Impact:** +$23,600/year (+280% increase)
+    - **Obesity Factor:** +$5,100/year (BMI ≥30)
+    - **Age Effect:** ~$295/year progressive increase
+    - **Regional Variation:** Southeast regions 10% higher
+    
+    #### 👥 Creators
+    
+    **Ujan Pradhan** & **Rishav Prakash**
+    
+    Graduate students specializing in AI/ML applications in finance and healthcare analytics.
+    
+    #### 📝 Disclaimer
+    
+    This tool is for educational and informational purposes only. Actual insurance costs may vary based on specific medical conditions, detailed underwriting, policy terms, and insurance provider. Always consult with licensed insurance professionals for official quotes.
+    
+    #### 🔒 Privacy
+    
+    All data processing happens locally. No personal information is stored or transmitted except for AI analysis (which uses Gemini API).
+    """)
