@@ -17,7 +17,19 @@ from datetime import datetime
 import time
 import dill
 import os
-api_key = st.secrets["GEMINI_API_KEY"]
+
+# --- API Key Handling ---
+try:
+    api_key = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    api_key = os.getenv("GEMINI_API_KEY")
+
+if not api_key:
+    st.error("⚠️ Gemini API key not found. Please set GEMINI_API_KEY in Streamlit secrets or environment variables.")
+else:
+    genai.configure(api_key=api_key)
+
+# --- General Config ---
 warnings.filterwarnings('ignore')
 tf.get_logger().setLevel('ERROR')
 
