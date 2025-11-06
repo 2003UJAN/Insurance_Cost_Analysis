@@ -17,7 +17,7 @@ from datetime import datetime
 import time
 import dill
 import os
-
+st.write(st.secrets)
 # --- API Key Handling ---
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
